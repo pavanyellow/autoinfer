@@ -230,6 +230,23 @@ def print_results(results: dict, label: str = "Results"):
     print(f"  Peak GPU Memory:  {results['memory_peak_mb']:.1f} MB")
     print(f"  Total Time:       {results['total_time_sec']:.2f}s for {results['total_audio_sec']:.1f}s audio")
     print(f"  Samples:          {results['num_samples']}")
+
+    # Compare against published paper targets
+    from prepare import PAPER_TARGETS
+    targets = PAPER_TARGETS["0.6B"]
+    pct_of_target = (results['throughput_rtfx'] / targets['throughput']) * 100
+    print(f"  ---")
+    print(f"  vs Paper (vLLM):  {pct_of_target:.1f}% of published {targets['throughput']}x throughput")
+    if pct_of_target >= 100:
+        print(f"  MILESTONE:        GOLD — matched or beat published numbers!")
+    elif pct_of_target >= 80:
+        print(f"  MILESTONE:        SILVER — within 80% of published throughput")
+    elif pct_of_target >= 50:
+        print(f"  MILESTONE:        BRONZE — within 50% of published throughput")
+    else:
+        print(f"  MILESTONE:        Baseline — room to optimize")
+    wer_vs_paper = results['wer'] - targets['wer_librispeech_clean']
+    print(f"  WER vs Paper:     {wer_vs_paper:+.4f} (paper: {targets['wer_librispeech_clean']*100:.2f}%)")
     print(f"{'=' * 60}\n")
 
 

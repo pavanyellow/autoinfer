@@ -111,6 +111,30 @@ When deciding whether to KEEP an experiment:
 - Prefer PyTorch-native solutions over third-party libraries when performance is similar.
 - A 0.5ms latency improvement that adds 50 lines of hacky code? Probably not worth it.
 
+## Published Targets to Beat
+
+From the Qwen3-ASR paper (arXiv:2601.21337, Table 2 & 3), using **vLLM v0.14.0 + CUDA Graph + bf16** on a single GPU with ~2min audio:
+
+### Qwen3-ASR-0.6B (our model)
+| Metric | Published Number | Notes |
+|---|---|---|
+| RTF (conc=1) | 0.00923 | Real-time factor, lower = faster |
+| Throughput (conc=1) | 108x real-time | Audio seconds / wall second |
+| TTFT avg | 92 ms | Time to first token |
+| TTFT p95 | 105 ms | |
+| Throughput (conc=128) | 2000x | The headline number from the abstract |
+| WER LibriSpeech clean | 2.11% | Our quality floor |
+| WER LibriSpeech other | 4.55% | |
+| WER Fleurs-en | 4.39% | |
+
+These numbers use vLLM as the serving backend. Our naive transformers baseline will be much slower. The agent's job is to **close the gap with these numbers and ideally beat them**. The targets are available as `PAPER_TARGETS` in `prepare.py`.
+
+### Milestone Goals
+1. **Bronze**: Match 50% of published throughput (~54x real-time) with transformers-only optimizations
+2. **Silver**: Match 80% of published throughput (~87x) with any backend
+3. **Gold**: Match or exceed 108x throughput at concurrency=1
+4. **Platinum**: Beat published numbers — find something Qwen's team missed
+
 ## Important Notes
 
 - The model is Qwen3-ASR-0.6B (the smaller variant for fast iteration). Findings should generally transfer to the 1.7B model.
@@ -118,6 +142,7 @@ When deciding whether to KEEP an experiment:
 - Benchmarks use 100 LibriSpeech test-clean utterances.
 - Peak GPU memory matters — lower memory means we could eventually serve more concurrent requests.
 - The evaluation set is fixed. Don't overfit to it — optimizations should be general.
+- The published numbers use vLLM — reaching them without vLLM would be a notable finding. Reaching them with a simpler setup is also valuable.
 
 ## Getting Started
 

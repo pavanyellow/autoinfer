@@ -21,6 +21,35 @@ SAMPLE_RATE = 16000
 MAX_AUDIO_DURATION_SEC = 30  # cap audio length for consistent benchmarking
 WER_DEGRADATION_THRESHOLD = 0.02  # max allowed WER increase vs baseline (absolute)
 
+# ---- Published Targets (from Qwen3-ASR paper, arXiv:2601.21337) ----
+# These are the official numbers using vLLM v0.14.0 + CUDA Graph + bf16
+# on ~2min audio, single GPU. Our goal is to match or beat these.
+PAPER_TARGETS = {
+    "0.6B": {
+        # Table 2: Inference efficiency at concurrency=1 (single request)
+        "rtf": 0.00923,               # real-time factor (lower = faster)
+        "throughput": 108.34,          # audio seconds processed per wall second
+        "ttft_avg_ms": 92,             # time to first token, average
+        "ttft_p95_ms": 105,            # time to first token, 95th percentile
+        # Table 3: WER on LibriSpeech test (our eval set)
+        "wer_librispeech_clean": 0.0211,
+        "wer_librispeech_other": 0.0455,
+        "wer_fleurs_en": 0.0439,
+        # At higher concurrency (for reference)
+        "throughput_conc8": 500.0,     # 8 concurrent requests
+        "throughput_conc128": 2000.0,  # 128 concurrent → 2000 sec audio/sec
+    },
+    "1.7B": {
+        "rtf": 0.01482,
+        "throughput": 67.48,
+        "ttft_avg_ms": 102,
+        "ttft_p95_ms": 113,
+        "wer_librispeech_clean": 0.0163,
+        "wer_librispeech_other": 0.0338,
+        "wer_fleurs_en": 0.0335,
+    },
+}
+
 # ---- Paths ----
 MODEL_DIR = os.path.join(CACHE_DIR, "model")
 AUDIO_DIR = os.path.join(CACHE_DIR, "audio")
