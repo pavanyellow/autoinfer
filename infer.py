@@ -67,7 +67,7 @@ def transcribe(audio_paths: list[str]) -> list[str]:
                 torch.from_numpy(audio).unsqueeze(0), sr, SAMPLE_RATE
             ).squeeze(0).numpy()
         return audio
-    with ThreadPoolExecutor(max_workers=8) as pool:
+    with ThreadPoolExecutor(max_workers=16) as pool:
         audios = list(pool.map(_load, audio_paths))
 
     # Sort by audio length (shorter first) for better vLLM scheduling

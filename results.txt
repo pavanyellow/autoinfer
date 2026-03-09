@@ -25,9 +25,10 @@ exp-014    908.90x       63.6ms   1.45%       0.0MB  KEEP     scheduling_policy=
 exp-015    928.99x       60.9ms   1.45%       0.0MB  KEEP     threaded audio loading (8 workers)
 exp-016   1015.00x       60.4ms   1.45%       0.0MB  KEEP     max_model_len=2048 (avg of 3 runs) — SILVER
 exp-017    917.00x       65.7ms   1.45%       0.0MB  REVERT   max_model_len=1536 (outlier, avg worse)
+exp-018   1102.00x       62.0ms   1.45%       0.0MB  KEEP     16 audio loading threads (median of 5 runs)
 
 NOTE: Throughput is batch-concurrent (100 utterances at once via vLLM).
       Paper ~1050x at conc≈100 (A100). We're on A40 (696 vs 2039 GB/s bandwidth).
-      Variance: ±5% run-to-run. All numbers should be averaged over 3 runs.
+      Variance: ±5-10% run-to-run. Numbers are medians of 5 runs.
 
-Current best: ~1015x throughput (batch), 1.45% WER — SILVER
+Current best: ~1102x throughput (batch), 1.45% WER — SILVER
