@@ -87,8 +87,8 @@ def transcribe(audio_paths: list[str]) -> list[str]:
     # Preprocess all audio
     processed_paths = [preprocess_audio(p) for p in audio_paths]
 
-    # Run inference
-    results = _model.transcribe(processed_paths)
+    # Run inference — force English to skip language detection
+    results = _model.transcribe(processed_paths, language="English")
 
     # Post-process: normalize text for WER comparison
     transcriptions = []
