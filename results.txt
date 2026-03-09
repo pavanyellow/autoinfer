@@ -1,7 +1,7 @@
 AutoInfer Experiment Log
 ========================
-Paper target: 108.34x throughput, 2.11% WER
-Milestones: Bronze 54x | Silver 87x | Gold 200x | Platinum 300x
+Paper target: ~1050x throughput at conc≈100 (A100), 2.11% WER
+Milestones: Bronze 791x (done) | Silver 1000x | Gold 1136x | Platinum 1500x
 Eval: 100 LibriSpeech test-clean (901.1s audio)
 
 EXP         THROUGHPUT  LATENCY   WER     MEMORY     VERDICT  NOTES
@@ -18,5 +18,11 @@ exp-008     97.47x      246.3ms   1.45%   14732.1MB  REVERT   sort by audio leng
 exp-009     93.25x      256.8ms   1.45%   14734.0MB  REVERT   TF32+cudnn.benchmark (hurts fp16)
 exp-010     40.45x      921.4ms   1.41%   14152.3MB  REVERT   INT8 bitsandbytes (way slower)
 exp-011     97.24x      231.0ms   1.45%   14732.1MB  REVERT   torch.inference_mode (noise)
+exp-012    791.11x       65.7ms   1.45%       0.0MB  KEEP     vLLM 0.14 backend (batch=100 concurrent)
 
-Current best: 99.17x throughput, 1.45% WER — SILVER
+exp-013    882.95x       63.7ms   1.45%       0.0MB  KEEP     sort by audio length for vLLM scheduling
+
+NOTE: Throughput is batch-concurrent (100 utterances at once via vLLM).
+      Paper ~1050x at conc≈100 (A100). We're on A40 (696 vs 2039 GB/s bandwidth).
+
+Current best: 882.95x throughput (batch), 1.45% WER

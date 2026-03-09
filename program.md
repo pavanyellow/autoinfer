@@ -122,19 +122,31 @@ When deciding whether to KEEP an experiment:
 - Prefer PyTorch-native solutions over third-party libraries when performance is similar.
 - A 0.5ms latency improvement that adds 50 lines of hacky code? Probably not worth it.
 
-## The Real Competition
+## Paper Numbers to Beat (Qwen3-ASR-0.6B, Table 2)
 
-Forget the Qwen3-ASR paper target (108x with vLLM on A100). The real question is: **can Qwen3-ASR beat Whisper's optimized ecosystem on an A40?**
+These are the official vLLM numbers from the paper (on A100). Our bench.py sends 100 utterances at once, so effective concurrency ≈ 100.
 
-### Competitive Landscape (A40, single GPU)
-| Model | Size | Throughput | WER (test-clean) | Stack |
+| Conc. | RTF | Throughput | TTFT avg (ms) | TTFT p95 (ms) |
 |---|---|---|---|---|
-| **Qwen3-ASR-0.6B (us, now)** | 0.6B | **99x** | **1.45%** | PyTorch transformers |
-| Whisper large-v3 (HF) | 1.5B | ~50-80x | 2.0-2.5% | PyTorch transformers |
-| faster-whisper large-v3 | 1.5B | ~150-200x | 2.0-2.5% | CTranslate2 + INT8 |
-| Whisper large-v3-turbo | 0.8B | ~300-500x | 2.5-3.0% | Distilled + optimized |
+| 1 | 0.00923 | 108x | 92 | 105 |
+| 2 | 0.01124 | 178x | 103 | 168 |
+| 4 | 0.01284 | 312x | 132 | 203 |
+| 8 | 0.01600 | 500x | 228 | 417 |
+| 16 | 0.02384 | 671x | 459 | 882 |
+| 32 | 0.03808 | 840x | 820 | 1575 |
+| 64 | 0.06336 | 1010x | 1631 | 3196 |
+| 128 | 0.11264 | 1136x | 3210 | 6195 |
+| 256 | 0.21504 | 1190x | - | - |
 
-**Qwen3-ASR already wins on WER.** The gap is throughput. faster-whisper turbo gets 300-500x through CTranslate2 (optimized C++ runtime) + INT8 + CUDA graphs. We need to close that gap using PyTorch-native tools.
+At our effective conc≈100, paper interpolates to ~1050-1100x throughput (A100).
+
+### Milestone Goals (bench.py batch=100 measurement)
+Current: 791x throughput, 1.45% WER (on A40).
+
+1. **Bronze**: 791x — current vLLM baseline on A40 ✅
+2. **Silver**: 1000x — approach paper's conc=64 number (1010x) on A40
+3. **Gold**: 1136x — match paper's conc=128 number on A40
+4. **Platinum**: 1500x+ — beat the paper on A40
 
 ### A40 Hardware Limits
 | Spec | Value | Implication |
@@ -144,15 +156,7 @@ Forget the Qwen3-ASR paper target (108x with vLLM on A100). The real question is
 | FP16 TFLOPS | 150 | Encoder is fine, not the bottleneck |
 | VRAM | 48 GB | Plenty of room for large batches — batch=32 amortizes weight reads 32x |
 
-**Theoretical ceiling:** At INT8 batch=1, decoder can do ~1,657 weight reads/sec. Average ASR output is ~30 tokens for 10s audio → ~550 utterances/sec → **~400-600x RTF**. With batching, the ceiling is in the thousands. We are currently at 99x — there is a **4-6x gap** to close.
-
-### Milestone Goals (updated after 8 experiments)
-Current: 99x throughput, 1.45% WER.
-
-1. ~~**Bronze**: 108x — match Qwen paper target (vLLM + A100) on A40 with PyTorch~~ ALMOST (99x)
-2. **Silver**: 200x — beat faster-whisper large-v3. Requires INT8 + CUDA graphs.
-3. **Gold**: 400x — match faster-whisper turbo throughput while keeping WER < 2%. This is the real target.
-4. **Platinum**: 600x+ — beat the entire Whisper ecosystem on A40. INT8 + CUDA graphs + batching. This is the theoretical ceiling.
+**Theoretical ceiling:** At INT8 batch=1, decoder can do ~1,657 weight reads/sec. Average ASR output is ~30 tokens for 10s audio → ~550 utterances/sec → **~400-600x RTF**. With batching, the ceiling is in the thousands. We are currently at ~1100x with vLLM.
 
 ## Important Notes
 

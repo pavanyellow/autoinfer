@@ -56,8 +56,8 @@ def load_model():
 def transcribe(audio_paths: list[str]) -> list[str]:
     load_model()
 
-    # Load audio and build vLLM inputs
-    inputs = []
+    # Load audio
+    audios = []
     for p in audio_paths:
         audio, sr = sf.read(p, dtype="float32")
         if sr != SAMPLE_RATE:
@@ -65,23 +65,27 @@ def transcribe(audio_paths: list[str]) -> list[str]:
             audio = torchaudio.functional.resample(
                 torch.from_numpy(audio).unsqueeze(0), sr, SAMPLE_RATE
             ).squeeze(0).numpy()
-        inputs.append({
-            "prompt": _prompt_template,
-            "multi_modal_data": {"audio": [audio]},
-        })
+        audios.append(audio)
 
-    # Run vLLM inference (handles batching, paged attention, CUDA graphs internally)
+    # Sort by audio length (shorter first) for better vLLM scheduling
+    order = sorted(range(len(audios)), key=lambda i: len(audios[i]))
+    inputs = [
+        {"prompt": _prompt_template, "multi_modal_data": {"audio": [audios[i]]}}
+        for i in order
+    ]
+
+    # Run vLLM inference
     outputs = _model.generate(inputs, sampling_params=_sampling_params, use_tqdm=False)
 
-    # Normalize text
-    transcriptions = []
-    for o in outputs:
+    # Unsort and normalize text
+    results = [""] * len(audios)
+    for idx, o in zip(order, outputs):
         text = o.outputs[0].text.lower().strip()
         text = re.sub(r"[^\w\s']", " ", text)
         text = re.sub(r"\s+", " ", text).strip()
-        transcriptions.append(text)
+        results[idx] = text
 
-    return transcriptions
+    return results
 
 
 if __name__ == "__main__":
