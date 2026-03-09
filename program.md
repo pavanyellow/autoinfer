@@ -139,18 +139,20 @@ Forget the Qwen3-ASR paper target (108x with vLLM on A100). The real question is
 ### A40 Hardware Limits
 | Spec | Value | Implication |
 |---|---|---|
-| Memory BW | 696 GB/s | Decoder bottleneck: 696 / 0.84 GB (bf16 weights) ≈ 828 weight reads/sec max |
+| Memory BW | 696 GB/s | Decoder bottleneck: 696 / 0.42 GB (INT8 weights) ≈ 1,657 decode steps/sec at batch=1 |
 | INT8 TOPS | 299 | 2x effective throughput vs FP16 — INT8 quantization is the single biggest lever |
 | FP16 TFLOPS | 150 | Encoder is fine, not the bottleneck |
-| VRAM | 48 GB | Plenty of room for large batches |
+| VRAM | 48 GB | Plenty of room for large batches — batch=32 amortizes weight reads 32x |
+
+**Theoretical ceiling:** At INT8 batch=1, decoder can do ~1,657 weight reads/sec. Average ASR output is ~30 tokens for 10s audio → ~550 utterances/sec → **~400-600x RTF**. With batching, the ceiling is in the thousands. We are currently at 99x — there is a **4-6x gap** to close.
 
 ### Milestone Goals (updated after 8 experiments)
 Current: 99x throughput, 1.45% WER.
 
 1. ~~**Bronze**: 108x — match Qwen paper target (vLLM + A100) on A40 with PyTorch~~ ALMOST (99x)
-2. **Silver**: 150x — beat faster-whisper large-v3 (not turbo). Requires INT8 quantization.
-3. **Gold**: 300x — match faster-whisper turbo throughput while keeping WER < 2%. This is the real target.
-4. **Platinum**: 500x+ — beat the entire Whisper ecosystem. Would require INT4/INT8 + CUDA graphs + batching. Theoretical A40 ceiling at INT8 batch=1 is ~460x.
+2. **Silver**: 200x — beat faster-whisper large-v3. Requires INT8 + CUDA graphs.
+3. **Gold**: 400x — match faster-whisper turbo throughput while keeping WER < 2%. This is the real target.
+4. **Platinum**: 600x+ — beat the entire Whisper ecosystem on A40. INT8 + CUDA graphs + batching. This is the theoretical ceiling.
 
 ## Important Notes
 
