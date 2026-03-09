@@ -17,6 +17,7 @@ CONTRACT:
 """
 
 import os
+import re
 import sys
 import torch
 import numpy as np
@@ -92,8 +93,11 @@ def transcribe(audio_paths: list[str]) -> list[str]:
     transcriptions = []
     for result in results:
         text = result.text if hasattr(result, "text") else str(result)
-        # Normalize: lowercase, strip whitespace
         text = text.lower().strip()
+        # Remove punctuation (model outputs commas, periods, dashes, etc.)
+        text = re.sub(r"[^\w\s']", " ", text)
+        # Collapse whitespace
+        text = re.sub(r"\s+", " ", text).strip()
         transcriptions.append(text)
 
     return transcriptions
