@@ -91,7 +91,7 @@ def transcribe(audio_paths: list[str]) -> list[str]:
     # Post-process: normalize text for WER comparison
     transcriptions = []
     for result in results:
-        text = result if isinstance(result, str) else result.get("text", "")
+        text = result.text if hasattr(result, "text") else str(result)
         # Normalize: lowercase, strip whitespace
         text = text.lower().strip()
         transcriptions.append(text)
