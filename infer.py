@@ -50,7 +50,7 @@ def load_model():
         dtype=torch.bfloat16,
         device_map="cuda:0",
         max_inference_batch_size=32,
-        attn_implementation="sdpa",
+        attn_implementation="flash_attention_2",
     )
 
     print(f"Model loaded: {MODEL_NAME}")
