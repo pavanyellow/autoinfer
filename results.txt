@@ -1,14 +1,22 @@
 AutoInfer Experiment Log
 ========================
 Paper target: 108.34x throughput, 2.11% WER
+Milestones: Bronze 54x | Silver 87x | Gold 200x | Platinum 300x
 Eval: 100 LibriSpeech test-clean (901.1s audio)
 
-EXP         THROUGHPUT  LATENCY   WER     MEMORY    VERDICT  NOTES
-----------  ----------  --------  ------  --------  -------  -----
-baseline    71.81x      253.4ms   1.45%   6892.9MB  ---      initial bf16 inference
-exp-001     74.89x      256.1ms   1.45%   6892.9MB  KEEP     attn_implementation=sdpa
-exp-002     74.61x      247.3ms   1.45%   6892.9MB  KEEP     flash_attention_2 (replaced sdpa)
-exp-003     68.63x      252.5ms   1.45%   6892.9MB  REVERT   torch.compile reduce-overhead (slower)
-exp-004     79.45x      230.9ms   1.41%   6933.0MB  KEEP     force language="English"
+EXP         THROUGHPUT  LATENCY   WER     MEMORY     VERDICT  NOTES
+----------  ----------  --------  ------  ---------  -------  -----
+baseline    71.81x      253.4ms   1.45%    6892.9MB  ---      initial bf16 inference
+exp-001     74.89x      256.1ms   1.45%    6892.9MB  KEEP     attn_implementation=sdpa
+exp-002     74.61x      247.3ms   1.45%    6892.9MB  KEEP     flash_attention_2 (replaced sdpa)
+exp-003     68.63x      252.5ms   1.45%    6892.9MB  REVERT   torch.compile reduce-overhead (slower)
+exp-004     79.45x      230.9ms   1.41%    6933.0MB  KEEP     force language="English"
+exp-005     77.26x      244.6ms   1.41%    6933.0MB  REVERT   max_new_tokens=128 (no benefit)
+exp-006     97.77x      246.0ms   1.41%   14730.0MB  KEEP     bypass qwen_asr wrapper — SILVER
+exp-007     99.17x      247.4ms   1.45%   14732.1MB  KEEP     fp16 instead of bf16
+exp-008     97.47x      246.3ms   1.45%   14732.1MB  REVERT   sort by audio length (no benefit)
+exp-009     93.25x      256.8ms   1.45%   14734.0MB  REVERT   TF32+cudnn.benchmark (hurts fp16)
+exp-010     40.45x      921.4ms   1.41%   14152.3MB  REVERT   INT8 bitsandbytes (way slower)
+exp-011     97.24x      231.0ms   1.45%   14732.1MB  REVERT   torch.inference_mode (noise)
 
-Current best: 79.45x throughput, 1.41% WER (73.3% of paper target)
+Current best: 99.17x throughput, 1.45% WER — SILVER

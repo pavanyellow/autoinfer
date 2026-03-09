@@ -9,7 +9,6 @@ CONTRACT:
 import os
 import re
 import sys
-import torch
 import numpy as np
 import soundfile as sf
 
@@ -19,31 +18,31 @@ from prepare import MODEL_DIR, MODEL_NAME, SAMPLE_RATE
 # Global references - loaded once
 _model = None
 _processor = None
+_sampling_params = None
 _prompt_template = None
 
 
 def load_model():
-    """Load model and processor directly, bypassing Qwen3ASRModel wrapper."""
-    global _model, _processor, _prompt_template
+    """Load model via vLLM backend for optimized inference."""
+    global _model, _processor, _sampling_params, _prompt_template
 
     if _model is not None:
         return
 
-    from transformers import AutoModel, AutoProcessor
-    # Register qwen3_asr model type with transformers
-    import qwen_asr  # noqa: F401
+    from vllm import LLM, SamplingParams
+    from qwen_asr.core.transformers_backend import Qwen3ASRProcessor
 
-    _model = AutoModel.from_pretrained(
-        MODEL_DIR,
-        dtype=torch.float16,
-        device_map="cuda:0",
-        attn_implementation="flash_attention_2",
+    _model = LLM(
+        model=MODEL_DIR,
+        dtype="float16",
+        gpu_memory_utilization=0.9,
+        max_model_len=4096,
     )
-    _model.eval()
 
-    _processor = AutoProcessor.from_pretrained(MODEL_DIR, fix_mistral_regex=True)
+    _processor = Qwen3ASRProcessor.from_pretrained(MODEL_DIR, fix_mistral_regex=True)
+    _sampling_params = SamplingParams(temperature=0.0, max_tokens=512)
 
-    # Pre-build the prompt template once (force English, skip language detection)
+    # Pre-build the prompt template (force English)
     msgs = [
         {"role": "system", "content": ""},
         {"role": "user", "content": [{"type": "audio", "audio": ""}]},
@@ -51,42 +50,33 @@ def load_model():
     base = _processor.apply_chat_template(msgs, add_generation_prompt=True, tokenize=False)
     _prompt_template = base + "language English<asr_text>"
 
-    print(f"Model loaded: {MODEL_NAME} (direct)")
+    print(f"Model loaded: {MODEL_NAME} (vLLM)")
 
 
 def transcribe(audio_paths: list[str]) -> list[str]:
     load_model()
 
-    # Load audio files as numpy arrays
-    wavs = []
+    # Load audio and build vLLM inputs
+    inputs = []
     for p in audio_paths:
         audio, sr = sf.read(p, dtype="float32")
         if sr != SAMPLE_RATE:
-            import torchaudio
-            audio = torch.from_numpy(audio).unsqueeze(0)
-            audio = torchaudio.functional.resample(audio, sr, SAMPLE_RATE).squeeze(0).numpy()
-        wavs.append(audio)
+            import torchaudio, torch
+            audio = torchaudio.functional.resample(
+                torch.from_numpy(audio).unsqueeze(0), sr, SAMPLE_RATE
+            ).squeeze(0).numpy()
+        inputs.append({
+            "prompt": _prompt_template,
+            "multi_modal_data": {"audio": [audio]},
+        })
 
-    # Build prompts (same template for all)
-    texts = [_prompt_template] * len(wavs)
-
-    # Process and run inference
-    inputs = _processor(text=texts, audio=wavs, return_tensors="pt", padding=True)
-    inputs = inputs.to(_model.device).to(_model.dtype)
-
-    with torch.no_grad():
-        output_ids = _model.generate(**inputs, max_new_tokens=512)
-
-    decoded = _processor.batch_decode(
-        output_ids.sequences[:, inputs["input_ids"].shape[1]:],
-        skip_special_tokens=True,
-        clean_up_tokenization_spaces=False,
-    )
+    # Run vLLM inference (handles batching, paged attention, CUDA graphs internally)
+    outputs = _model.generate(inputs, sampling_params=_sampling_params, use_tqdm=False)
 
     # Normalize text
     transcriptions = []
-    for text in decoded:
-        text = text.lower().strip()
+    for o in outputs:
+        text = o.outputs[0].text.lower().strip()
         text = re.sub(r"[^\w\s']", " ", text)
         text = re.sub(r"\s+", " ", text).strip()
         transcriptions.append(text)
