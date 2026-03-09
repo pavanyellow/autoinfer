@@ -36,7 +36,7 @@ def load_model():
         model=MODEL_DIR,
         dtype="float16",
         gpu_memory_utilization=0.9,
-        max_model_len=2048,
+        max_model_len=1536,
         scheduling_policy="priority",
     )
 
