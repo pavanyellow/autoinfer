@@ -33,20 +33,45 @@ The same loop as autoresearch, but for **inference** instead of training:
 | `bench.py` | Benchmark harness (WER, latency, throughput, memory) | No |
 | `program.md` | Research directions & agent instructions | No |
 
-## Quick Start
+## GPU Instance Setup
+
+One-time setup for a fresh GPU instance (tested on Ubuntu + A40/A100/H100):
 
 ```bash
-# 1. Setup (one-time)
+# 1. Install GitHub CLI
+curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+sudo apt update && sudo apt install gh -y
+gh auth login
+
+# 2. Install Claude Code
+npm install -g @anthropic-ai/claude-code  # requires Node.js 18+
+
+# 3. Clone the repo
+gh repo clone pavanyellow/autoinfer
+cd autoinfer
+
+# 4. Run setup (downloads model + LibriSpeech test data)
 python prepare.py
 
-# 2. Establish baseline
+# 5. Establish baseline
 python bench.py --baseline --experiment baseline
+git add -A && git commit -m "baseline: initial Qwen3-ASR-0.6B inference"
 
-# 3. Initialize git tracking
-git init && git add -A && git commit -m "baseline: initial Qwen3-ASR-0.6B inference"
+# 6. Let the agent loose
+claude "Read program.md and follow the experiment loop. Start from the baseline and run experiments autonomously."
+```
 
-# 4. Let the agent loose
-# Point your favorite AI coding agent at program.md and let it run
+## Quick Start
+
+If you already have `gh` and `claude` installed:
+
+```bash
+gh repo clone pavanyellow/autoinfer && cd autoinfer
+python prepare.py
+python bench.py --baseline --experiment baseline
+git add -A && git commit -m "baseline: initial Qwen3-ASR-0.6B inference"
+claude "Read program.md and follow the experiment loop. Start from the baseline and run experiments autonomously."
 ```
 
 ## Running with Different Agents
