@@ -1,0 +1,14 @@
+AutoInfer Experiment Log
+========================
+Paper target: 108.34x throughput, 2.11% WER
+Eval: 100 LibriSpeech test-clean (901.1s audio)
+
+EXP         THROUGHPUT  LATENCY   WER     MEMORY    VERDICT  NOTES
+----------  ----------  --------  ------  --------  -------  -----
+baseline    71.81x      253.4ms   1.45%   6892.9MB  ---      initial bf16 inference
+exp-001     74.89x      256.1ms   1.45%   6892.9MB  KEEP     attn_implementation=sdpa
+exp-002     74.61x      247.3ms   1.45%   6892.9MB  KEEP     flash_attention_2 (replaced sdpa)
+exp-003     68.63x      252.5ms   1.45%   6892.9MB  REVERT   torch.compile reduce-overhead (slower)
+exp-004     79.45x      230.9ms   1.41%   6933.0MB  KEEP     force language="English"
+
+Current best: 79.45x throughput, 1.41% WER (73.3% of paper target)
