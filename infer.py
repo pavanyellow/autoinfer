@@ -57,16 +57,18 @@ def load_model():
 def transcribe(audio_paths: list[str]) -> list[str]:
     load_model()
 
-    # Load audio
-    audios = []
-    for p in audio_paths:
+    # Load audio in parallel
+    from concurrent.futures import ThreadPoolExecutor
+    def _load(p):
         audio, sr = sf.read(p, dtype="float32")
         if sr != SAMPLE_RATE:
             import torchaudio, torch
             audio = torchaudio.functional.resample(
                 torch.from_numpy(audio).unsqueeze(0), sr, SAMPLE_RATE
             ).squeeze(0).numpy()
-        audios.append(audio)
+        return audio
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        audios = list(pool.map(_load, audio_paths))
 
     # Sort by audio length (shorter first) for better vLLM scheduling
     order = sorted(range(len(audios)), key=lambda i: len(audios[i]))
