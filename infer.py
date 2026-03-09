@@ -35,7 +35,7 @@ def load_model():
 
     _model = AutoModel.from_pretrained(
         MODEL_DIR,
-        dtype=torch.bfloat16,
+        dtype=torch.float16,
         device_map="cuda:0",
         attn_implementation="flash_attention_2",
     )
