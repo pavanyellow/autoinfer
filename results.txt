@@ -23,8 +23,9 @@ exp-012    791.11x       65.7ms   1.45%       0.0MB  KEEP     vLLM 0.14 backend 
 exp-013    882.95x       63.7ms   1.45%       0.0MB  KEEP     sort by audio length for vLLM scheduling
 exp-014    908.90x       63.6ms   1.45%       0.0MB  KEEP     scheduling_policy="priority"
 exp-015    928.99x       60.9ms   1.45%       0.0MB  KEEP     threaded audio loading (8 workers)
+exp-016   1074.42x       60.4ms   1.45%       0.0MB  KEEP     max_model_len=2048 — SILVER
 
 NOTE: Throughput is batch-concurrent (100 utterances at once via vLLM).
       Paper ~1050x at conc≈100 (A100). We're on A40 (696 vs 2039 GB/s bandwidth).
 
-Current best: 928.99x throughput (batch), 1.45% WER
+Current best: 1074.42x throughput (batch), 1.45% WER — SILVER
