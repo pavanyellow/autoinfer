@@ -21,8 +21,9 @@ exp-011     97.24x      231.0ms   1.45%   14732.1MB  REVERT   torch.inference_mo
 exp-012    791.11x       65.7ms   1.45%       0.0MB  KEEP     vLLM 0.14 backend (batch=100 concurrent)
 
 exp-013    882.95x       63.7ms   1.45%       0.0MB  KEEP     sort by audio length for vLLM scheduling
+exp-014    908.90x       63.6ms   1.45%       0.0MB  KEEP     scheduling_policy="priority"
 
 NOTE: Throughput is batch-concurrent (100 utterances at once via vLLM).
       Paper ~1050x at conc≈100 (A100). We're on A40 (696 vs 2039 GB/s bandwidth).
 
-Current best: 882.95x throughput (batch), 1.45% WER
+Current best: 908.90x throughput (batch), 1.45% WER

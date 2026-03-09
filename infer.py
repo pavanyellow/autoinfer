@@ -37,6 +37,7 @@ def load_model():
         dtype="float16",
         gpu_memory_utilization=0.9,
         max_model_len=4096,
+        scheduling_policy="priority",
     )
 
     _processor = Qwen3ASRProcessor.from_pretrained(MODEL_DIR, fix_mistral_regex=True)
