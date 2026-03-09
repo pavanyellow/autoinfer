@@ -60,35 +60,46 @@ git add -A && git commit -m "baseline: initial Qwen3-ASR inference"
 
 ## Research Directions
 
-Explore these optimization categories **roughly in this order** (low-hanging fruit first):
+### What we know so far (experiments 1-4)
+- flash_attention_2 gives marginal gains — encoder sequences are short (12.5Hz), attention is NOT the bottleneck
+- torch.compile HURTS — model too small, sequences too short, compilation overhead dominates
+- Forcing language="English" was the biggest win — fewer autoregressive decode steps = direct speedup
+- The decoder is MEMORY-BANDWIDTH BOUND at batch=1 (0.84GB weights, read every token step)
+- Theoretical analysis: paper achieves ~10% of hardware ceiling. Massive headroom exists.
 
-### Phase 1: Quick Wins (experiments 1-10)
-- **Attention implementation**: Try `flash_attention_2` or `sdpa` in model loading
-- **Precision**: Test fp16 vs bf16 vs fp8 (if supported)
-- **Batch size tuning**: Find the optimal batch size for the GPU
-- **torch.compile()**: Apply compilation with different modes (reduce-overhead, max-autotune)
-- **Greedy decoding**: Ensure we're using greedy (not beam search) if quality permits
+### Phase 2: The Bandwidth Wall (experiments 5-15)
+The decoder reads 0.84GB of weights every token step. This is THE bottleneck. Attack it directly:
 
-### Phase 2: Quantization (experiments 10-25)
-- **INT8 quantization**: bitsandbytes, GPTQ, or native PyTorch quantization
-- **INT4 quantization**: More aggressive, watch WER carefully
-- **Mixed quantization**: Different precision for encoder vs decoder
-- **AWQ**: Activation-aware weight quantization if available for this model
+- **INT8 quantization**: Halves weight reads → should give ~1.5-1.8x throughput. Try `bitsandbytes` load_in_8bit or `torch.ao.quantization`. This is the single highest-ROI experiment right now.
+- **INT4 quantization**: Quarters weight reads. Watch WER — the 0.6B model has less redundancy. Try GPTQ or AWQ if available for this architecture.
+- **Mixed precision quantization**: INT4 the decoder (bandwidth-bound), keep encoder at bf16 (compute is fine). The encoder is only 0.36GB — quantizing it barely helps.
+- **Static KV cache**: Pre-allocate KV cache tensors instead of dynamic allocation. Eliminates memory allocation overhead every decode step. Use `model.generation_config.cache_implementation = "static"` or manually pre-allocate.
+- **Batch size sweep**: You have ~48GB on A40, model uses ~7GB. Try batch_size=[16, 32, 64] — larger batches amortize weight reads across more sequences. Find the sweet spot before you OOM.
 
-### Phase 3: Pipeline Optimization (experiments 25-40)
-- **Audio preprocessing**: VAD (Voice Activity Detection) to trim silence
-- **Dynamic batching**: Sort by audio length, batch similar lengths together
-- **Chunked audio processing**: Process long audio in overlapping chunks
-- **Prefix caching**: Cache encoder outputs for repeated prefixes
-- **Memory layout**: Optimize tensor memory layout (channels_last, contiguous)
+### Phase 3: Decode Step Reduction (experiments 15-25)
+Every token you DON'T generate is free speed. The forcing-English trick proved this.
 
-### Phase 4: Advanced (experiments 40+)
-- **vLLM backend**: Switch from transformers to vLLM for the decoder
-- **ONNX export + TensorRT**: Export and optimize the compute graph
-- **Speculative decoding**: Use a smaller draft model for the decoder
-- **Custom CUDA kernels**: If PyTorch primitives are the bottleneck
-- **KV-cache optimization**: Quantized KV-cache, paged attention
-- **Model pruning**: Remove attention heads or layers with minimal WER impact
+- **Minimal output format**: Strip any unnecessary tokens from the output template. Does the model emit `<|im_start|>assistant\nlanguage English<asr_text>...`? Can you truncate earlier or skip the preamble?
+- **Greedy decoding with temperature=0**: Ensure there's zero sampling overhead. No beam search, no top-k, no top-p.
+- **Max new tokens cap**: Set a tight `max_new_tokens` based on expected output length. For 30s audio at ~2.5 words/sec = ~100 tokens max. Don't let the model ramble.
+- **Early stopping on EOS**: Verify the model stops immediately on `<|im_end|>`, not padding to max length.
+- **Speculative decoding**: Use a tiny draft model (if one exists for Qwen3) to propose multiple tokens at once. Even a simple n-gram predictor for common words could help.
+
+### Phase 4: Pipeline & Memory (experiments 25-35)
+- **Sort by audio length before batching**: Groups similar-length sequences → less padding waste in the encoder, more uniform decode lengths.
+- **Encoder output caching**: If processing the same audio repeatedly (e.g., retries), cache encoder hidden states.
+- **Overlap encoder and decoder**: While the decoder is generating tokens for batch N, start encoding batch N+1 on a separate CUDA stream.
+- **Memory-efficient attention for cross-attention**: The decoder cross-attends to 12.5Hz × audio_sec encoder tokens every step. For 30s audio = 375 tokens. At batch=64, that's a lot of KV cache reads.
+- **torch.cuda.graphs**: Capture the decode step as a CUDA graph to eliminate kernel launch overhead (this is what vLLM does). Note: torch.compile failed, but raw CUDA graphs are different — they skip Python overhead entirely.
+
+### Phase 5: Nuclear Options (experiments 35+)
+- **torch.cuda.CUDAGraph**: Capture the entire decode step as a CUDA graph. This eliminates Python overhead and kernel launch latency — it's the single biggest trick vLLM uses. Different from torch.compile (which failed). Manually capture the forward pass.
+- **CTranslate2 conversion**: Convert decoder to CTranslate2 format (like faster-whisper did for Whisper). Optimized C++ runtime with INT8 built-in. This is how faster-whisper gets 150-200x.
+- **TensorRT-LLM**: Export and compile the decoder. Maximum performance but painful setup. This is the path to 500x+.
+- **Decoder layer pruning**: The 0.6B model has 28 decoder layers. Try dropping the last 2-4 layers and see WER impact. If WER holds, you just got a permanent 7-14% speedup.
+- **FP8 inference**: If the GPU supports it (A40 does not, H100 does). Save for when someone runs this on H100.
+- **Continuous batching**: Process a stream of requests, inserting new sequences into decode slots as others finish. This is how you get to the paper's 2000x at conc=128.
+- **vLLM backend**: Switch to vLLM for the decoder only. This is what the paper uses. Less interesting as a research finding — we want to beat vLLM, not use it.
 
 ## Decision Criteria
 
@@ -111,29 +122,35 @@ When deciding whether to KEEP an experiment:
 - Prefer PyTorch-native solutions over third-party libraries when performance is similar.
 - A 0.5ms latency improvement that adds 50 lines of hacky code? Probably not worth it.
 
-## Published Targets to Beat
+## The Real Competition
 
-From the Qwen3-ASR paper (arXiv:2601.21337, Table 2 & 3), using **vLLM v0.14.0 + CUDA Graph + bf16** on a single GPU with ~2min audio:
+Forget the Qwen3-ASR paper target (108x with vLLM on A100). The real question is: **can Qwen3-ASR beat Whisper's optimized ecosystem on an A40?**
 
-### Qwen3-ASR-0.6B (our model)
-| Metric | Published Number | Notes |
+### Competitive Landscape (A40, single GPU)
+| Model | Size | Throughput | WER (test-clean) | Stack |
+|---|---|---|---|---|
+| **Qwen3-ASR-0.6B (us, now)** | 0.6B | **99x** | **1.45%** | PyTorch transformers |
+| Whisper large-v3 (HF) | 1.5B | ~50-80x | 2.0-2.5% | PyTorch transformers |
+| faster-whisper large-v3 | 1.5B | ~150-200x | 2.0-2.5% | CTranslate2 + INT8 |
+| Whisper large-v3-turbo | 0.8B | ~300-500x | 2.5-3.0% | Distilled + optimized |
+
+**Qwen3-ASR already wins on WER.** The gap is throughput. faster-whisper turbo gets 300-500x through CTranslate2 (optimized C++ runtime) + INT8 + CUDA graphs. We need to close that gap using PyTorch-native tools.
+
+### A40 Hardware Limits
+| Spec | Value | Implication |
 |---|---|---|
-| RTF (conc=1) | 0.00923 | Real-time factor, lower = faster |
-| Throughput (conc=1) | 108x real-time | Audio seconds / wall second |
-| TTFT avg | 92 ms | Time to first token |
-| TTFT p95 | 105 ms | |
-| Throughput (conc=128) | 2000x | The headline number from the abstract |
-| WER LibriSpeech clean | 2.11% | Our quality floor |
-| WER LibriSpeech other | 4.55% | |
-| WER Fleurs-en | 4.39% | |
+| Memory BW | 696 GB/s | Decoder bottleneck: 696 / 0.84 GB (bf16 weights) ≈ 828 weight reads/sec max |
+| INT8 TOPS | 299 | 2x effective throughput vs FP16 — INT8 quantization is the single biggest lever |
+| FP16 TFLOPS | 150 | Encoder is fine, not the bottleneck |
+| VRAM | 48 GB | Plenty of room for large batches |
 
-These numbers use vLLM as the serving backend. Our naive transformers baseline will be much slower. The agent's job is to **close the gap with these numbers and ideally beat them**. The targets are available as `PAPER_TARGETS` in `prepare.py`.
+### Milestone Goals (updated after 8 experiments)
+Current: 99x throughput, 1.45% WER.
 
-### Milestone Goals
-1. **Bronze**: Match 50% of published throughput (~54x real-time) with transformers-only optimizations
-2. **Silver**: Match 80% of published throughput (~87x) with any backend
-3. **Gold**: Match or exceed 108x throughput at concurrency=1
-4. **Platinum**: Beat published numbers — find something Qwen's team missed
+1. ~~**Bronze**: 108x — match Qwen paper target (vLLM + A100) on A40 with PyTorch~~ ALMOST (99x)
+2. **Silver**: 150x — beat faster-whisper large-v3 (not turbo). Requires INT8 quantization.
+3. **Gold**: 300x — match faster-whisper turbo throughput while keeping WER < 2%. This is the real target.
+4. **Platinum**: 500x+ — beat the entire Whisper ecosystem. Would require INT4/INT8 + CUDA graphs + batching. Theoretical A40 ceiling at INT8 batch=1 is ~460x.
 
 ## Important Notes
 
